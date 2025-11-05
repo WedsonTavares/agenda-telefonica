@@ -1,0 +1,36 @@
+{
+  "_comment": "AGENDA TELEFÔNICA - Sistema completo de gerenciamento de contatos com Node.js + Express + SQLite. Validação de telefones, detecção de duplicatas, log de exclusões e exportação de banco.",
+  "name": "agenda-telefonica",
+  "version": "1.0.0",
+  "description": "Sistema completo de agenda telefônica com validação, pesquisa e log de exclusões",
+  "main": "server.js",
+  "scripts": {
+    "start": "npm run build:css && node server.js",
+    "dev": "nodemon server.js",
+    "build:css": "npx @tailwindcss/cli -i ./public/input.css -o ./public/output.css",
+    "dev:css": "npx @tailwindcss/cli -i ./public/input.css -o ./public/output.css --watch"
+  },
+  "keywords": [
+    "agenda",
+    "telefone",
+    "contatos",
+    "crud",
+    "sqlite",
+    "express",
+    "tailwind"
+  ],
+  "author": "Teste Prático",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.16",
+    "nodemon": "^3.1.9"
+  },
+  "nodemonConfig": {
+    "ignore": ["public/*", "logs/*", "*.db"],
+    "ext": "js"
+  }
+}

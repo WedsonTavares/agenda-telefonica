@@ -1,0 +1,23 @@
+# Ignorar dependências do Node.js
+node_modules/
+
+# Logs
+logs/*.txt
+!logs/.gitkeep
+
+# Banco de dados (opcional - remova esta linha se quiser versionar o DB)
+# agenda.db
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos do editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Variáveis de ambiente
+.env
+.env.local

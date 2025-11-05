@@ -1,0 +1,73 @@
+/*
+ * ============================================
+ * AGENDA TELEFÔNICA - Estilos Customizados
+ * ============================================
+ * 
+ * PROPÓSITO:
+ * Este arquivo define estilos customizados que complementam o Tailwind CSS.
+ * Contém apenas classes específicas do projeto que não podem ser feitas
+ * diretamente com utilitários Tailwind.
+ * 
+ * POR QUE EXISTE:
+ * - Tailwind não cobre 100% dos casos de uso (animações customizadas, gradientes específicos)
+ * - Permite manter consistência visual através de classes reutilizáveis
+ * - Separação de responsabilidades: Tailwind para utilitários, este arquivo para componentes customizados
+ * 
+ * ESTRUTURA:
+ * 1. Imports do Tailwind e fontes
+ * 2. Gradientes e backgrounds (DARK MODE ONLY)
+ * 3. Animações customizadas
+ * 4. Estilos de componentes (cards de contato)
+ */
+
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* ============================================
+ * GRADIENTES E BACKGROUNDS - DARK MODE ONLY
+ * ============================================ */
+
+.gradient-bg {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, #1e40af, #1e3a8a);
+}
+
+/* ============================================
+ * ANIMAÇÕES
+ * ============================================ */
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+ * COMPONENTES - CARDS DE CONTATO
+ * ============================================ */
+
+.contato-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.contato-card:hover {
+  transform: translateX(8px);
+}
+
+.contato-card.selecionado {
+  border-color: #10b981;
+  background-color: #064e3b;
+}
