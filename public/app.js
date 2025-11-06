@@ -30,14 +30,33 @@
 // ============================================
 let contatoEditandoId = null; // ID do contato sendo editado (null = modo criação)
 let detalhesAberto = null;    // ID do card expandido com detalhes
+// Controle de buscas e loading para evitar flickering/loops
+let currentSearchController = null; // AbortController da busca atual
+let searchLoadingTimer = null;      // Timer para exibir overlay com atraso
+let searchLoadingVisible = false;   // Estado do overlay para busca
 
 // ============================================
+// Helpers específicos do loading da busca (evita piscar/loop)
+function showSearchLoadingDelayed(delay = 200) {
+    clearTimeout(searchLoadingTimer);
+    searchLoadingTimer = setTimeout(() => {
+        searchLoadingVisible = true;
+        mostrarCarregando(true);
+    }, delay);
+}
+
+function hideSearchLoading() {
+    clearTimeout(searchLoadingTimer);
+    if (searchLoadingVisible) {
+        mostrarCarregando(false);
+        searchLoadingVisible = false;
+    }
+}
 // UTILIDADES E HELPERS
 // ============================================
 
 /**
  * Normaliza número de telefone removendo caracteres não-numéricos
- * Usado para comparação e validação de duplicatas
  */
 function normalizarTelefone(str) {
     return str.replace(/\D/g, '');
@@ -151,14 +170,39 @@ async function pesquisarContatos() {
     }
 
     try {
-        mostrarCarregando(true);
-        const resposta = await fetch(`/api/contatos/pesquisar?termo=${encodeURIComponent(termo)}`);
+        // Cancela qualquer busca anterior para evitar respostas fora de ordem
+        if (currentSearchController) {
+            currentSearchController.abort();
+        }
+        currentSearchController = new AbortController();
+        const { signal } = currentSearchController;
+
+        // Mostra overlay apenas se a requisição demorar (evita piscar)
+        showSearchLoadingDelayed(200);
+
+        const resposta = await fetch(`/api/contatos/pesquisar?termo=${encodeURIComponent(termo)}` , { signal });
+        if (!resposta.ok) {
+            let erroMsg = 'Erro ao pesquisar contatos';
+            try {
+                const payload = await resposta.json();
+                if (payload && payload.erro) erroMsg = payload.erro;
+            } catch (_) { /* ignore parse error */ }
+            mostrarToast(erroMsg, 'erro');
+            return;
+        }
         const contatos = await resposta.json();
-        renderizarContatos(contatos);
+        const lista = Array.isArray(contatos) ? contatos : [];
+        renderizarContatos(lista);
     } catch (erro) {
-        console.error('Erro ao pesquisar:', erro);
-        mostrarToast('Erro ao pesquisar contatos', 'erro');
+        if (erro && erro.name === 'AbortError') {
+            // Busca anterior cancelada – ignore
+        } else {
+            console.error('Erro ao pesquisar:', erro);
+            mostrarToast('Erro ao pesquisar contatos', 'erro');
+        }
     } finally {
+        // Garante esconder overlay
+        hideSearchLoading();
         mostrarCarregando(false);
     }
 }
@@ -183,18 +227,26 @@ async function salvarContato() {
     clearAllErrors();
     let hasError = false;
     if (!nome) { setFieldError('nomeError', 'Informe o nome completo'); hasError = true; }
-    if (!idade) { setFieldError('idadeError', 'Informe a idade'); hasError = true; }
     if (!telefones) { setFieldError('telefonesError', 'Informe ao menos um telefone'); hasError = true; }
     if (hasError) { mostrarToast('Verifique os campos destacados', 'erro'); return; }
 
-    // Processar telefones (separados por vírgula ou quebra de linha)
+    // Processar telefones (separados por vírgula ou quebra de linha) e remover duplicatas
     const listaTelefones = telefones
         .split(/[,\n]/)
         .map(t => t.trim())
         .filter(t => t);
 
-    // Validar formato dos telefones (10 ou 11 dígitos)
-    for (const tel of listaTelefones) {
+    // Deduplicate telefones com base no número normalizado (remove formatação)
+    const uniqueMap = new Map();
+    for (const t of listaTelefones) {
+        const norm = normalizarTelefone(t);
+        if (!norm) continue;
+        if (!uniqueMap.has(norm)) uniqueMap.set(norm, t);
+    }
+    const listaTelefonesUnicos = Array.from(uniqueMap.values());
+
+    // Validar formato dos telefones únicos (10 ou 11 dígitos)
+    for (const tel of listaTelefonesUnicos) {
         const normalizado = normalizarTelefone(tel);
         if (normalizado.length < 10 || normalizado.length > 11) {
             setFieldError('telefonesError', `Telefone ${tel} inválido. Use 10 ou 11 dígitos.`);
@@ -208,7 +260,7 @@ async function salvarContato() {
             const verificacao = await fetch('/api/telefones/verificar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ telefones: listaTelefones })
+                body: JSON.stringify({ telefones: listaTelefonesUnicos })
             });
             const resultado = await verificacao.json();
 
@@ -222,21 +274,38 @@ async function salvarContato() {
         }
     }
 
+    // Validar idade se fornecida (1-150)
+    let idadeNum = null;
+    if (idade !== null && idade !== undefined && idade.toString().trim() !== '') {
+        const n = parseInt(idade);
+        if (isNaN(n) || n < 1 || n > 150) {
+            setFieldError('idadeError', 'Idade deve estar entre 1 e 150');
+            mostrarToast('Verifique os campos destacados', 'erro');
+            return;
+        }
+        idadeNum = n;
+    }
+
     // Preparar dados para envio
     const dados = {
         nome,
-        idade: parseInt(idade),
-        telefones: listaTelefones
+        idade: idadeNum, // opcional
+        telefones: listaTelefonesUnicos
     };
 
     try {
         mostrarCarregando(true);
         
-        const url = contatoEditandoId 
-            ? `/api/contatos/${contatoEditandoId}` 
+        // Fallback defensivo ao hidden caso o estado global se perca
+        const idHiddenEl = document.getElementById('contatoIdHidden');
+        const idHiddenVal = idHiddenEl && idHiddenEl.value ? parseInt(idHiddenEl.value) : null;
+        const idParaAtualizar = (contatoEditandoId != null) ? contatoEditandoId : idHiddenVal;
+
+        const url = (idParaAtualizar != null)
+            ? `/api/contatos/${idParaAtualizar}` 
             : '/api/contatos';
-        
-        const metodo = contatoEditandoId ? 'PUT' : 'POST';
+
+        const metodo = (idParaAtualizar != null) ? 'PUT' : 'POST';
 
         const resposta = await fetch(url, {
             method: metodo,
@@ -251,6 +320,7 @@ async function salvarContato() {
             );
             limparFormulario();
             carregarContatos();
+            fecharModalForm();
         } else {
             const erro = await resposta.json();
             mostrarToast(erro.erro || 'Erro ao salvar contato', 'erro');
@@ -376,7 +446,7 @@ function renderizarContatos(contatos) {
                     </div>
                     <div>
                         <h3 class="font-bold text-xl text-white">${contato.NOME}</h3>
-                        <p class="text-slate-400 text-sm">${contato.IDADE} anos</p>
+                        <p class="text-slate-400 text-sm">${(contato.IDADE !== undefined && contato.IDADE !== null) ? (contato.IDADE + ' anos') : ''}</p>
                     </div>
                 </div>
                 <i data-lucide="${detalhesAberto === contato.ID ? 'chevron-up' : 'chevron-down'}" 
@@ -438,14 +508,18 @@ function fecharTodosDetalhes() {
  */
 async function editarContato(id) {
     try {
+        // Abre modal de formulário ao editar
+        abrirModalForm();
         const resposta = await fetch(`/api/contatos/${id}`);
         const contato = await resposta.json();
 
-        document.getElementById('nome').value = contato.NOME;
-        document.getElementById('idade').value = contato.IDADE;
+    document.getElementById('nome').value = contato.NOME;
+    document.getElementById('idade').value = (contato.IDADE ?? '');
         document.getElementById('telefones').value = contato.TELEFONES.join('\n');
 
-        contatoEditandoId = id;
+    contatoEditandoId = id;
+    const hidden = document.getElementById('contatoIdHidden');
+    if (hidden) hidden.value = String(id);
         document.getElementById('tituloFormulario').textContent = 'Editar Contato';
         document.getElementById('btnSalvar').innerHTML = `
             <i data-lucide="save" class="w-5 h-5"></i>
@@ -453,8 +527,9 @@ async function editarContato(id) {
         `;
         if (window.lucide) lucide.createIcons();
 
-        // Scroll suave para o formulário
-        document.getElementById('formCadastro').scrollIntoView({ behavior: 'smooth' });
+        // Foco no campo nome dentro do modal
+        const nome = document.getElementById('nome');
+        if (nome) nome.focus();
     } catch (erro) {
         console.error('Erro ao carregar contato:', erro);
         mostrarToast('Erro ao carregar contato', 'erro');
@@ -467,6 +542,8 @@ async function editarContato(id) {
 function limparFormulario() {
     document.getElementById('formContato').reset();
     contatoEditandoId = null;
+    const hidden = document.getElementById('contatoIdHidden');
+    if (hidden) hidden.value = '';
     document.getElementById('tituloFormulario').textContent = 'Novo Contato';
     document.getElementById('btnSalvar').innerHTML = `
         <i data-lucide="save" class="w-5 h-5"></i>
@@ -481,6 +558,7 @@ function limparFormulario() {
 function cancelarEdicao() {
     limparFormulario();
     fecharTodosDetalhes();
+    fecharModalForm();
 }
 
 // ============================================
@@ -548,6 +626,16 @@ function fecharModalDuplicata() {
     }
 }
 
+/**
+ * Exibe o formulário para criação de novo contato
+ */
+function mostrarFormulario() {
+    abrirModalForm();
+    limparFormulario();
+    const nome = document.getElementById('nome');
+    if (nome) nome.focus();
+}
+
 // ============================================
 // INICIALIZAÇÃO
 // ============================================
@@ -579,15 +667,34 @@ document.addEventListener('DOMContentLoaded', () => {
     if (idadeEl) idadeEl.addEventListener('input', () => clearFieldError('idadeError'));
     if (telefonesEl) telefonesEl.addEventListener('input', () => clearFieldError('telefonesError'));
 
-    // Ajuste de responsividade/alinhamento da barra de pesquisa sem editar HTML
+    // Busca automática com debounce (sem flood no servidor)
     const termo = document.getElementById('termoPesquisa');
     if (termo) {
-        const wrapper = termo.closest('div'); // div.flex gap-2
-        if (wrapper) {
-            wrapper.classList.add('flex', 'gap-2', 'flex-col', 'sm:flex-row', 'items-stretch');
-            termo.classList.add('min-w-0');
-            const buttons = wrapper.querySelectorAll('button');
-            buttons.forEach(btn => btn.classList.add('w-full', 'sm:w-auto'));
+        termo.classList.add('min-w-0');
+        // Debounce para busca automática enquanto digita (sem flood no servidor)
+        let debounceTimer = null;
+        let composing = false;
+        termo.addEventListener('compositionstart', () => composing = true);
+        termo.addEventListener('compositionend', () => { composing = false; triggerSearch(); });
+        termo.addEventListener('input', () => {
+            if (composing) return;
+            triggerSearch();
+        });
+
+        function triggerSearch() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const value = termo.value.trim();
+                if (value) {
+                    pesquisarContatos();
+                } else {
+                    // Limpo: aborta busca anterior e volta lista completa
+                    if (currentSearchController) currentSearchController.abort();
+                    hideSearchLoading();
+                    mostrarCarregando(false);
+                    carregarContatos();
+                }
+            }, 300);
         }
     }
 });
@@ -610,4 +717,17 @@ function exportarFormato(fmt) {
     // Força download navegando para o endpoint
     window.location.href = url;
     fecharModalExportar();
+}
+
+// ============================================
+// MODAL DO FORMULÁRIO - ABRIR/FECHAR
+// ============================================
+function abrirModalForm() {
+    const overlay = document.getElementById('modalForm');
+    if (overlay) overlay.classList.remove('hidden');
+}
+
+function fecharModalForm() {
+    const overlay = document.getElementById('modalForm');
+    if (overlay) overlay.classList.add('hidden');
 }

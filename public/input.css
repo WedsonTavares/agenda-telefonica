@@ -8,7 +8,7 @@
  * Contém apenas classes específicas do projeto que não podem ser feitas
  * diretamente com utilitários Tailwind.
  * 
- * POR QUE EXISTE:
+  * JUSTIFICATIVAS:
  * - Tailwind não cobre 100% dos casos de uso (animações customizadas, gradientes específicos)
  * - Permite manter consistência visual através de classes reutilizáveis
  * - Separação de responsabilidades: Tailwind para utilitários, este arquivo para componentes customizados

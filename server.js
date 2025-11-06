@@ -70,6 +70,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
  */
 app.use(express.static('public'));
 
+// Serve arquivos estáticos adicionais (ex: favicon) que ficam em /assets
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
+
 // ============================================
 // SISTEMA DE LOGS
 // ============================================
@@ -231,6 +234,90 @@ app.get('/api/contatos', (req, res) => {
 });
 
 /**
+ * GET /api/contatos/pesquisar?termo=XXX
+ * 
+ * Busca contatos por nome ou telefone (case-insensitive)
+ * 
+ * Parâmetros:
+ * - termo (query string): Texto para buscar
+ * 
+ * Comportamento:
+ * - Busca em NOME (LIKE) e em TELEFONES normalizadas
+ * - Ignora formatação de telefone (busca "11987654321" encontra "(11) 98765-4321")
+ * 
+ * Retorno: Array de contatos (mesmo formato de GET /api/contatos)
+ */
+app.get('/api/contatos/pesquisar', (req, res) => {
+    // Busca simplificada: apenas por NOME (texto) ou TELEFONE (quando termo contém dígitos)
+    const termoRaw = req.query.termo || '';
+    const termo = termoRaw.trim();
+
+    if (!termo) return res.json([]);
+
+    // Se o termo contém dígitos, procurar por telefone normalizado
+    if (/\d/.test(termo)) {
+        const termoNormalizado = normalizarNumero(termo);
+        const sql = `
+            SELECT DISTINCT c.ID, c.NOME, c.IDADE,
+                   GROUP_CONCAT(t.NUMERO, '||') AS TELEFONES
+            FROM Contato c
+            INNER JOIN Telefone t ON c.ID = t.IDCONTATO
+            WHERE COALESCE(${SQL_NUMERO_NORMALIZADO}, '') LIKE ?
+            GROUP BY c.ID
+            ORDER BY c.NOME
+        `;
+
+    const params = [`%${termoNormalizado}%`];
+
+        db.all(sql, params, (err, rows) => {
+            if (err) {
+                console.error('[SEARCH] erro telefone:', err);
+                return res.status(500).json({ erro: 'Erro ao pesquisar contatos' });
+            }
+
+            const contatos = (rows || []).map(r => ({
+                ID: r.ID,
+                NOME: r.NOME,
+                IDADE: r.IDADE,
+                TELEFONES: r.TELEFONES ? r.TELEFONES.split('||') : []
+            }));
+
+            return res.json(contatos);
+        });
+
+    } else {
+        // Busca por nome (case-insensitive)
+        const sql = `
+            SELECT c.ID, c.NOME, c.IDADE,
+                   GROUP_CONCAT(t.NUMERO, '||') AS TELEFONES
+            FROM Contato c
+            LEFT JOIN Telefone t ON c.ID = t.IDCONTATO
+            WHERE c.NOME LIKE ? COLLATE NOCASE
+            GROUP BY c.ID
+            ORDER BY c.NOME
+        `;
+
+    const params = [`%${termo}%`];
+
+        db.all(sql, params, (err, rows) => {
+            if (err) {
+                console.error('[SEARCH] erro nome:', err);
+                return res.status(500).json({ erro: 'Erro ao pesquisar contatos' });
+            }
+
+            const contatos = (rows || []).map(r => ({
+                ID: r.ID,
+                NOME: r.NOME,
+                IDADE: r.IDADE,
+                TELEFONES: r.TELEFONES ? r.TELEFONES.split('||') : []
+            }));
+
+            return res.json(contatos);
+        });
+    }
+});
+
+/**
  * GET /api/contatos/:id
  * 
  * Busca um contato específico por ID
@@ -280,59 +367,6 @@ app.get('/api/contatos/:id', (req, res) => {
 });
 
 /**
- * GET /api/contatos/pesquisar?termo=XXX
- * 
- * Busca contatos por nome ou telefone (case-insensitive)
- * 
- * Parâmetros:
- * - termo (query string): Texto para buscar
- * 
- * Comportamento:
- * - Busca em NOME (LIKE) e em TELEFONES normalizadas
- * - Ignora formatação de telefone (busca "11987654321" encontra "(11) 98765-4321")
- * 
- * Retorno: Array de contatos (mesmo formato de GET /api/contatos)
- */
-app.get('/api/contatos/pesquisar', (req, res) => {
-    const termo = req.query.termo || '';
-
-    if (!termo.trim()) {
-        return res.json([]);
-    }
-
-    const termoNormalizado = normalizarNumero(termo);
-
-    const sql = `
-        SELECT DISTINCT c.ID, c.NOME, c.IDADE,
-               GROUP_CONCAT(t.NUMERO, '||') AS TELEFONES
-        FROM Contato c
-        LEFT JOIN Telefone t ON c.ID = t.IDCONTATO
-        WHERE c.NOME LIKE ? 
-           OR ${SQL_NUMERO_NORMALIZADO} LIKE ?
-        GROUP BY c.ID
-        ORDER BY c.NOME
-    `;
-
-    const parametros = [`%${termo}%`, `%${termoNormalizado}%`];
-
-    db.all(sql, parametros, (err, rows) => {
-        if (err) {
-            console.error('Erro ao pesquisar contatos:', err);
-            return res.status(500).json({ erro: 'Erro ao pesquisar contatos' });
-        }
-
-        const contatos = rows.map(row => ({
-            ID: row.ID,
-            NOME: row.NOME,
-            IDADE: row.IDADE,
-            TELEFONES: row.TELEFONES ? row.TELEFONES.split('||') : []
-        }));
-
-        res.json(contatos);
-    });
-});
-
-/**
  * POST /api/contatos
  * 
  * Cria novo contato com telefones
@@ -375,6 +409,14 @@ app.post('/api/contatos', (req, res) => {
         return res.status(400).json({ erro: 'Nenhum telefone válido fornecido (devem ter 10 ou 11 dígitos)' });
     }
 
+    // Remover telefones duplicados (mesmo número, formatações diferentes)
+    const mapTelefones = new Map();
+    telefonesValidos.forEach(tel => {
+        const norm = normalizarNumero(tel);
+        if (norm && !mapTelefones.has(norm)) mapTelefones.set(norm, tel);
+    });
+    const telefonesUnicos = Array.from(mapTelefones.values());
+
     // Sanitizar dados
     const nomeLimpo = sanitizar(nome);
     const idadeNum = idade ? parseInt(idade) : null;
@@ -392,7 +434,7 @@ app.post('/api/contatos', (req, res) => {
 
         // Inserir telefones
         const sqlTelefone = 'INSERT INTO Telefone (IDCONTATO, NUMERO) VALUES (?, ?)';
-        const promises = telefonesValidos.map(tel => {
+        const promises = telefonesUnicos.map(tel => {
             const telLimpo = sanitizar(tel);
             return new Promise((resolve, reject) => {
                 db.run(sqlTelefone, [contatoId, telLimpo], (err) => {
@@ -450,6 +492,14 @@ app.put('/api/contatos/:id', (req, res) => {
         return res.status(400).json({ erro: 'Nenhum telefone válido fornecido (devem ter 10 ou 11 dígitos)' });
     }
 
+    // Remover telefones duplicados (mesmo número, formatações diferentes)
+    const mapTelefonesUpd = new Map();
+    telefonesValidos.forEach(tel => {
+        const norm = normalizarNumero(tel);
+        if (norm && !mapTelefonesUpd.has(norm)) mapTelefonesUpd.set(norm, tel);
+    });
+    const telefonesUnicos = Array.from(mapTelefonesUpd.values());
+
     const nomeLimpo = sanitizar(nome);
     const idadeNum = idade ? parseInt(idade) : null;
 
@@ -477,7 +527,7 @@ app.put('/api/contatos/:id', (req, res) => {
 
             // Inserir novos telefones
             const sqlTelefone = 'INSERT INTO Telefone (IDCONTATO, NUMERO) VALUES (?, ?)';
-            const promises = telefonesValidos.map(tel => {
+            const promises = telefonesUnicos.map(tel => {
                 const telLimpo = sanitizar(tel);
                 return new Promise((resolve, reject) => {
                     db.run(sqlTelefone, [id, telLimpo], (err) => {
@@ -725,8 +775,8 @@ app.get('/export', (req, res) => {
 
 /**
  * Inicia servidor HTTP na porta configurada
- * 
- * Comportamento especial para Windows:
+ *
+ * Comportamento especial para abrir automaticamente em windows, linux e macOS:
  * - Detecta sistema operacional
  * - Abre navegador automaticamente em http://localhost:3000
  * - Usa comando 'start' do cmd.exe
@@ -741,5 +791,21 @@ app.listen(PORT, () => {
     if (process.platform === 'win32') {
         console.log(`🌐 Abrindo navegador...`);
         spawn('cmd', ['/c', 'start', url]);
+    } else if (process.platform === 'darwin') {
+        // macOS
+        try {
+            console.log(`🌐 Abrindo navegador (macOS)...`);
+            spawn('open', [url], { stdio: 'ignore', detached: true }).unref();
+        } catch (e) {
+            console.warn('Não foi possível abrir o navegador automaticamente no macOS.');
+        }
+    } else if (process.platform === 'linux') {
+        // Linux (requer xdg-open disponível na maioria das distros)
+        try {
+            console.log(`🌐 Abrindo navegador (Linux)...`);
+            spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
+        } catch (e) {
+            console.warn('Não foi possível abrir o navegador automaticamente no Linux.');
+        }
     }
 });

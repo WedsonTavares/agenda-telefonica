@@ -659,9 +659,9 @@ Passo 3: Se confirmar, contato é deletado
 ### **Validações no Frontend (app.js)**
 
 ```javascript
-// 1. Campos obrigatórios
-if (!nome || !idade || !telefones) {
-    mostrarToast('Preencha todos os campos', 'erro');
+// 1. Campos obrigatórios (idade é opcional)
+if (!nome || !telefones) {
+    mostrarToast('Informe nome e ao menos um telefone', 'erro');
     return;
 }
 
@@ -674,7 +674,7 @@ for (const tel of listaTelefones) {
     }
 }
 
-// 3. Verifica duplicatas
+// 3. Verifica duplicatas (apenas ao criar)
 const resultado = await fetch('/api/telefones/verificar', {
     method: 'POST',
     body: JSON.stringify({ telefones: listaTelefones })
@@ -1081,7 +1081,7 @@ output.css: ~15KB  (apenas classes usadas na aplicação)
 
 - **Vanilla JS**: Zero overhead de frameworks (React, Vue, Angular)
 - **Lazy load**: Ícones Lucide só são renderizados quando necessário
-- **Debouncing**: Pesquisa pode ser otimizada com debounce (não implementado, mas fácil adicionar)
+- **Debouncing**: Pesquisa implementada com debounce de ~300ms e AbortController para evitar respostas fora de ordem
 
 ---
 
