@@ -5,14 +5,11 @@
 ## 📖 Índice
 
 - [Visão Geral](#-visão-geral)
-- [Arquitetura e Decisões Técnicas](#-arquitetura-e-decisões-técnicas)
 - [Fluxo Completo da Aplicação](#-fluxo-completo-da-aplicação)
 - [Tecnologias e Por Quê](#-tecnologias-e-por-quê)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Banco de Dados](#-banco-de-dados)
-- [Instalação e Execução](#-instalação-e-execução)
-- [Como Usar](#-como-usar)
-- [Validações e Segurança](#-validações-e-segurança)
+- [Instalação e Execução](#instalação-e-execução)
+- [Como Usar](#como-usar)
 - [Sistema de Logs](#-sistema-de-logs)
 - [API REST](#-api-rest)
 - [Respostas do Teste](#-respostas-do-teste-prático)
@@ -437,7 +434,7 @@ ID | IDCONTATO | NUMERO
 
 ---
 
-## ⚙️ Instalação e Execução
+## Instalação e Execução
 
 ### **Pré-requisitos**
 - ✅ Node.js (versão 14 ou superior) → [Download aqui](https://nodejs.org/)
@@ -504,7 +501,7 @@ npm run dev
 
 ---
 
-## 🎯 Como Usar a Aplicação
+## Como Usar
 
 ### **1. Cadastrar Novo Contato**
 
