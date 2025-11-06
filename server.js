@@ -88,18 +88,43 @@ if (!fs.existsSync(logsDir)) {
 
 /**
  * Registra exclusão de contato em arquivo texto
- * Formato: [TIMESTAMP] ID: X | NOME: Y | TELEFONES: A, B, C
  * 
  * @param {number} id - ID do contato excluído
  * @param {string} nome - Nome do contato
  * @param {Array<string>} telefones - Lista de telefones
  */
 function gravarLog(id, nome, telefones) {
-    const timestamp = new Date().toISOString();
+    // Formata data para PT-BR (DD/MM/YYYY HH:MM:SS)
+    function formatDateBR(d) {
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        return `${dd}/${mm}/${yyyy} ${hh}:${min}:${ss}`;
+    }
+
+    const timestamp = formatDateBR(new Date());
     const logPath = path.join(logsDir, 'exclusoes.txt');
-    const logLine = `[${timestamp}] ID: ${id} | NOME: ${nome} | TELEFONES: ${telefones.join(', ')}\n`;
-    
-    fs.appendFile(logPath, logLine, (err) => {
+
+    // Monta bloco legível em PT-BR (telefones na mesma linha separados por "; ")
+    const linhas = [];
+    linhas.push('========================================');
+    linhas.push(`Data: ${timestamp}`);
+    linhas.push('Ação: Exclusão de contato');
+    linhas.push(`ID: ${id}`);
+    linhas.push(`Nome: ${nome}`);
+    if (Array.isArray(telefones) && telefones.length > 0) {
+        linhas.push(`Telefones: ${telefones.join('; ')}`);
+    } else {
+        linhas.push('Telefones: (nenhum)');
+    }
+    linhas.push('');
+
+    const logBlock = linhas.join('\n') + '\n';
+
+    fs.appendFile(logPath, logBlock, (err) => {
         if (err) {
             console.error('Erro ao gravar log:', err);
         }
